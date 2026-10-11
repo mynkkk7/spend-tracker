@@ -1,0 +1,6 @@
+# Personal files — never commit
+personal/
+*.backup.json
+spend-tracker-backup-*.json
+node_modules/
+.DS_Store
