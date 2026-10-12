@@ -1,5 +1,5 @@
 import { html, money, parseAmount, nowLocal, toRupees, esc } from '../util.js';
-import { state, saveTxn, deleteTxn, category, kind, categoriesOf, outKinds, incomeKind, activeAccounts, account } from '../store.js';
+import { state, saveTxn, deleteTxn, saveCategory, category, kind, categoriesOf, outKinds, incomeKind, activeAccounts, account } from '../store.js';
 import { parsePaymentText, suggestCategory } from '../parse.js';
 import { readImage } from '../ocr.js';
 import { topbar, accountOptions, dot, toast, confirmSheet, icon, seg } from '../ui.js';
@@ -19,6 +19,12 @@ export function txnFormView({ id } = {}, query = {}) {
     upiRef: '', date: nowLocal(), essential: false, source: 'manual', found: {}, manualEssential: false,
   };
   if (f.type === 'in' && !existing) f.kindId = incomeKind()?.id || null;
+  const dupOf = !existing && query.dup ? state.txns.find((t) => t.id === query.dup) : null;
+  if (dupOf) Object.assign(f, {
+    type: dupOf.type, amountText: String(toRupees(dupOf.amount)), accountId: dupOf.accountId, toAccountId: dupOf.toAccountId || '',
+    kindId: dupOf.kindId, categoryId: dupOf.categoryId, label: dupOf.label, payee: dupOf.payee || '', vpa: dupOf.vpa || '', note: dupOf.note || '',
+    essential: !!dupOf.essential, manualEssential: true,
+  });
   const ui = { mode: existing ? 'manual' : (query.mode || (query.text ? 'paste' : 'manual')), pasteText: query.text || '', ocr: null, preview: null, busy: false, status: '' };
   if (!existing && f.note) applySuggestion(f, true);
   if (!existing && query.text) applyParsed(f, parsePaymentText(state, query.text), ui, 'paste');
@@ -103,8 +109,11 @@ function render(f, ui, existing) {
       : html`<div class="small muted">No categories under ${isIn ? 'Income' : curKind?.name || 'this kind'} yet. <a href="#/settings/categories">Add one</a> — or save without.</div>`}
   </div>` : ''}
 
-  ${cat?.labels?.length ? html`<div class="field"><span>Label · ${cat.name}</span><div class="chips">
-    ${cat.labels.map((l) => html`<button type="button" class="chip" data-label="${l}" aria-pressed="${f.label === l}">${l}</button>`)}</div></div>` : ''}
+  ${cat ? html`<div class="field"><span>Label · ${cat.name} <small class="muted">(optional, e.g. Petrol, Washing)</small></span><div class="chips">
+    ${(cat.labels || []).map((l) => html`<button type="button" class="chip" data-label="${l}" aria-pressed="${f.label === l}">${l}</button>`)}
+    ${ui.addingLabel ? html`<span class="new-label"><input data-new-label placeholder="New label" maxlength="24" enterkeyhint="done"><button type="button" class="btn btn-sm btn-primary" data-act="add-label">Add</button></span>`
+      : html`<button type="button" class="chip chip-add" data-act="new-label">+ New label</button>`}
+  </div></div>` : ''}
 
   <div class="grid2">
     <label class="field"><span>${isTr ? 'From' : isIn ? 'Into account' : 'From account'} ${tag('account', 'matched')}</span>
@@ -119,7 +128,8 @@ function render(f, ui, existing) {
   ${isOut ? html`<label class="toggle-row"><span>Essential<small>Couldn’t have skipped this</small></span><input type="checkbox" name="essential" ${f.essential ? 'checked' : ''} data-essential></label>` : ''}
 
   <button type="submit" class="btn btn-primary btn-block mt16">${existing ? 'Save changes' : isTr ? 'Save transfer' : isIn ? 'Save money in' : 'Save'}</button>
-  ${existing ? html`<button type="button" class="btn btn-block btn-danger mt8" data-act="delete">${icon.trash} Delete entry</button>` : ''}
+  ${existing ? html`<button type="button" class="btn btn-block mt8" data-act="duplicate">Duplicate as new entry</button>
+    <button type="button" class="btn btn-block btn-danger mt8" data-act="delete">${icon.trash} Delete entry</button>` : ''}
   </form>`;
 }
 
@@ -155,6 +165,26 @@ function mount(el, f, ui, existing) {
     f.found.category = false; rerender();
   }));
   form.querySelectorAll('[data-label]').forEach((b) => b.addEventListener('click', () => { f.label = f.label === b.dataset.label ? null : b.dataset.label; rerender(); }));
+  form.querySelector('[data-act="new-label"]')?.addEventListener('click', () => { ui.addingLabel = true; rerender(); el.querySelector('[data-new-label]')?.focus(); });
+  const addLabel = async () => {
+    const inp = el.querySelector('[data-new-label]');
+    const name = (inp?.value || '').trim().replace(/\s+/g, ' ');
+    ui.addingLabel = false;
+    if (name) {
+      const c = category(f.categoryId);
+      const existingLabel = (c.labels || []).find((l) => l.toLowerCase() === name.toLowerCase());
+      if (!existingLabel) await saveCategory({ ...c, labels: [...(c.labels || []), name] });
+      f.label = existingLabel || name;
+      toast(existingLabel ? `Picked ${existingLabel}` : `Added label “${name}” to ${c.name}`);
+    }
+    rerender();
+  };
+  form.querySelector('[data-act="add-label"]')?.addEventListener('click', addLabel);
+  form.querySelector('[data-new-label]')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addLabel(); } });
+  form.querySelector('[data-act="duplicate"]')?.addEventListener('click', () => {
+    const q = new URLSearchParams({ dup: existing.id });
+    location.hash = '#/add?' + q.toString();
+  });
 
   // screenshot
   form.querySelector('[data-file]')?.addEventListener('change', async (e) => {

@@ -74,6 +74,12 @@ export function helpView() {
     <p>In the Shortcuts app create: <b>Get Latest Screenshots</b> (1) → <b>Extract Text from Image</b> → <b>Copy to Clipboard</b>. Run it after paying, then open Spend Tracker → + → Paste text → Paste from clipboard. Uses Apple’s own text recognition.</p>
     <h2>Monthly plan</h2>
     <p><b>Commitments</b> are what you pay every month (EMIs, SIPs, insurance, bills). Tick them off as they’re paid. <b>Salary split</b> works out how much each account needs this month. <b>Planned expenses</b> warns you early when a big cost won’t be covered.</p>
+    <h2>Faster tidying</h2>
+    <p>Press and hold any entry for quick actions: change category, duplicate, delete. <b>Tag now</b> on Home walks you through untagged entries one by one — tap a category and the next one appears.</p>
+    <h2>Insights</h2>
+    <p>Pick <b>All</b> or a single account at the top. <b>Worth a look</b> lists what stands out this month. Almost every number is tappable and opens the exact entries behind it.</p>
+    <h2>App lock</h2>
+    <p>Settings → App lock sets a 4-digit PIN, and Face ID if your phone supports it. The app locks after a minute away. It hides the screen — it doesn’t encrypt the data — and a forgotten PIN can only be reset by erasing the app’s data, so keep backups.</p>
     <h2>Your data</h2>
     <p>Everything is stored only in this app on this phone. Opening the link in Safari shows a separate, empty copy — always use the home-screen icon. Export a backup to iCloud Drive every week or two.</p>
     </div>`,

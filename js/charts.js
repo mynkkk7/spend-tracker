@@ -36,7 +36,8 @@ export function bars(values, { ref = null, height = 160, color = 'var(--s1)', sh
     const cx = 4 + slot * i + slot / 2;
     const h = Math.max(0, plotH - y(d.v));
     if (d.v > 0) out += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${(plotH - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h + 4).toFixed(1)}" rx="4" fill="${d.color || color}"></rect>`;
-    out += `<rect class="hit" x="${(cx - slot / 2).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent" data-tip="${esc(d.tip || `${d.label} · ${money(d.v)}`)}"></rect>`;
+    const hit = `<rect class="hit" x="${(cx - slot / 2).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${plotH}" fill="transparent" ${d.href ? '' : `data-tip="${esc(d.tip || `${d.label} · ${money(d.v)}`)}"`}></rect>`;
+    out += d.href && d.v > 0 ? `<a href="${esc(d.href)}" aria-label="${esc(d.tip || d.label)}"><title>${esc(d.tip || d.label)}</title>${hit}</a>` : hit;
     const show = showLabels ? showLabels.includes(i) : n <= 8;
     if (show) out += `<text x="${cx.toFixed(1)}" y="${plotH + 18}" text-anchor="middle" class="ax">${esc(d.label)}</text>`;
     if (annotate.includes(i) && d.v > 0) out += `<text x="${cx.toFixed(1)}" y="${(plotH - h - 5).toFixed(1)}" text-anchor="middle" class="an">${esc(moneyShort(d.v))}</text>`;

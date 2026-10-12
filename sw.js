@@ -1,15 +1,15 @@
 // Service worker: app shell works offline; OCR files are cached the first time they're used.
 // Bump VERSION whenever you change any app file so phones pick up the update.
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.1.0';
 const SHELL = `shell-${VERSION}`;
 const OCR = 'ocr-v5.1.1';
 
 const SHELL_FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
-  'js/app.js', 'js/db.js', 'js/store.js', 'js/util.js', 'js/calc.js', 'js/parse.js', 'js/ui.js', 'js/charts.js', 'js/ocr.js',
+  'js/app.js', 'js/db.js', 'js/findings.js', 'js/lock.js', 'js/store.js', 'js/util.js', 'js/calc.js', 'js/parse.js', 'js/ui.js', 'js/charts.js', 'js/ocr.js',
   'js/views/home.js', 'js/views/txnForm.js', 'js/views/txns.js', 'js/views/accounts.js', 'js/views/plan.js',
-  'js/views/insights.js', 'js/views/settings.js', 'js/views/welcome.js',
+  'js/views/insights.js', 'js/views/settings.js', 'js/views/welcome.js', 'js/views/tag.js',
 ];
 
 self.addEventListener('install', (e) => {

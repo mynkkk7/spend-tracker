@@ -10,6 +10,8 @@ import { commitmentsView, commitmentFormView, plannedView, plannedFormView, spli
 import { insightsView } from './views/insights.js';
 import { settingsView, planSettingsView, categoriesView, categoryFormView, kindsView } from './views/settings.js';
 import { welcomeView, helpView } from './views/welcome.js';
+import { tagView } from './views/tag.js';
+import { installLock } from './lock.js';
 
 const routes = [
   [/^\/$/, homeView],
@@ -32,6 +34,7 @@ const routes = [
   [/^\/settings\/categories\/(?<id>[^/]+)$/, categoryFormView],
   [/^\/settings\/kinds$/, kindsView],
   [/^\/help$/, helpView],
+  [/^\/tag$/, tagView],
 ];
 
 const ONBOARDING_OK = [/^\/welcome$/, /^\/settings\/accounts\/[^/]+$/];
@@ -87,6 +90,7 @@ async function start() {
     return;
   }
   installTooltips();
+  installLock();
   lastPath = parseHash().path;
   render();
   document.documentElement.classList.add('ready');

@@ -168,3 +168,44 @@ export function tabbar(active) {
     ${t('settings', '#/settings', icon.sliders, 'Settings')}
   </nav>`;
 }
+
+// ---------- long-press quick actions on transaction rows ----------
+export function bindTxnActions(root) {
+  let timer = null, startX = 0, startY = 0, fired = false;
+  const idOf = (a) => a.getAttribute('href').split('/').pop();
+  const open = (a) => { fired = true; navigator.vibrate?.(10); txnActionsSheet(idOf(a)); };
+  root.addEventListener('pointerdown', (e) => {
+    const a = e.target.closest('a.tx'); if (!a) return;
+    fired = false; startX = e.clientX; startY = e.clientY;
+    clearTimeout(timer); timer = setTimeout(() => open(a), 480);
+  });
+  const cancel = () => clearTimeout(timer);
+  root.addEventListener('pointerup', cancel);
+  root.addEventListener('pointercancel', cancel);
+  root.addEventListener('pointermove', (e) => { if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) cancel(); });
+  root.addEventListener('click', (e) => { if (fired && e.target.closest('a.tx')) { e.preventDefault(); fired = false; } }, true);
+  root.addEventListener('contextmenu', (e) => { const a = e.target.closest('a.tx'); if (a) { e.preventDefault(); clearTimeout(timer); open(a); } });
+}
+
+async function txnActionsSheet(id) {
+  const { saveTxn, deleteTxn } = await import('./store.js');
+  const t = state.txns.find((x) => x.id === id); if (!t) return;
+  const canTag = t.type === 'out' || t.type === 'in';
+  const group = t.type === 'in' ? 'income' : null;
+  const cats = canTag ? state.categories.filter((c) => !c.archived && (group ? kind(c.kindId)?.group === 'income' : kind(c.kindId)?.group !== 'income')) : [];
+  sheet(String(html`<h2 class="sheet-title">${txnTitle(t)}</h2><p class="sheet-body">${money(t.type === 'out' ? -t.amount : t.amount)} · ${t.date.slice(0, 10)}</p>
+    ${canTag ? html`<div class="field"><span>Change category</span><div class="chips">${cats.map((c) => html`<button type="button" class="chip" data-pick="${c.id}" aria-pressed="${t.categoryId === c.id}">${dot(c.color)}${c.name}</button>`)}</div></div>` : ''}
+    <div class="stack-btns"><a class="btn" href="#/txn/${t.id}" data-close>Edit</a><a class="btn" href="#/add?dup=${t.id}" data-close>Duplicate</a><button type="button" class="btn btn-danger" data-del>Delete</button></div>`), {
+    onMount(panel, close) {
+      panel.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', async () => {
+        const c = category(b.dataset.pick);
+        await saveTxn({ ...t, categoryId: c.id, kindId: c.kindId, label: c.labels?.includes(t.label) ? t.label : null, essential: t.type === 'out' ? !!c.essential : false });
+        close(); toast(`Moved to ${c.name}`);
+      }));
+      panel.querySelector('[data-del]').addEventListener('click', async () => {
+        close(); await deleteTxn(t.id);
+        toast('Entry deleted', { action: 'Undo', onAction: () => saveTxn(t) });
+      });
+    },
+  });
+}

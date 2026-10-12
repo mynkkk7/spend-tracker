@@ -1,7 +1,7 @@
 import { html, money, monthKey, monthLabel, addMonths, sum, parseAmount, toRupees, nowLocal, dayOf } from '../util.js';
 import { state, account, saveAccount, deleteAccount, saveSettings, saveTxn, ACCOUNT_PURPOSES, activeAccounts } from '../store.js';
 import { balance } from '../calc.js';
-import { topbar, bal, privacy, icon, purposeLabel, purposeColor, sheet, toast, confirmSheet, formData, tabbar, empty } from '../ui.js';
+import { bindTxnActions, topbar, bal, privacy, icon, purposeLabel, purposeColor, sheet, toast, confirmSheet, formData, tabbar, empty } from '../ui.js';
 import { filterTxns, dayGroups } from './txns.js';
 
 export function accountView({ id }, query) {
@@ -42,6 +42,7 @@ export function accountView({ id }, query) {
     ${tabbar('home')}`,
     mount(el, { refresh }) {
       el.querySelector('[data-act="reveal"]')?.addEventListener('click', () => { privacy.revealed = !privacy.revealed; refresh(); });
+      bindTxnActions(el);
       el.querySelector('[data-act="fix"]').addEventListener('click', () => {
         sheet(String(html`<h2 class="sheet-title">Fix balance</h2><p class="sheet-body">Enter what your bank app shows right now. The app adds a correction entry for the difference — it doesn’t count as spending.</p>
           <form data-fix><label class="field"><span>Actual balance</span><input name="v" inputmode="decimal" placeholder="₹0" autofocus></label>

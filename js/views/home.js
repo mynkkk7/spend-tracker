@@ -2,7 +2,8 @@ import { html, money, monthKey, monthLabel, shortDate, nowLocal, ordinal } from 
 import { state, activeAccounts, saveTxn, kindByKey, incomeKind, category, account } from '../store.js';
 import { totalBalance, balance, pace, compareToPrevious, commitmentStatus, salarySplit, plannedProjection, untaggedTxns } from '../calc.js';
 import { parseQuick } from '../parse.js';
-import { icon, bal, privacy, purposeLabel, purposeColor, txnRow, toast, progress, tabbar, empty } from '../ui.js';
+import { icon, bal, privacy, purposeLabel, purposeColor, txnRow, toast, progress, tabbar, empty, bindTxnActions } from '../ui.js';
+import { exportBackup } from './settings.js';
 
 export function homeView() {
   const mk = monthKey();
@@ -59,8 +60,8 @@ export function homeView() {
     </form>
     <div class="hint">“+5000 salary” for money in · “450 petrol” picks the category for you</div>
 
-    ${untagged ? html`<a class="banner warn" href="#/txns?untagged=1"><span class="grow">${untagged} entr${untagged === 1 ? 'y needs' : 'ies need'} a category</span><b>Tag now ›</b></a>` : ''}
-    ${backupDue ? html`<a class="banner" href="#/settings#backup"><span class="grow">Back up your data — it only lives on this phone</span><b>Back up ›</b></a>` : ''}
+    ${untagged ? html`<a class="banner warn" href="#/tag"><span class="grow">${untagged} entr${untagged === 1 ? 'y needs' : 'ies need'} a category</span><b>Tag now ›</b></a>` : ''}
+    ${backupDue ? html`<div class="banner"><span class="grow">Last backup: ${state.settings.lastBackupAt ? `${Math.floor((Date.now() - Date.parse(state.settings.lastBackupAt)) / 864e5)} days ago` : 'never'}. Your data only lives on this phone.</span><button type="button" class="btn btn-sm btn-primary" data-act="backup">Back up now</button></div>` : ''}
 
     <div class="sec-head"><h2>Accounts</h2><a href="#/settings/accounts">Manage</a></div>
     <div class="acc-scroll">
@@ -76,6 +77,8 @@ export function homeView() {
     ${tabbar('home')}`,
     mount(el, { refresh }) {
       el.querySelector('[data-act="toggle-reveal"]')?.addEventListener('click', () => { privacy.revealed = !privacy.revealed; refresh(); });
+      el.querySelector('[data-act="backup"]')?.addEventListener('click', exportBackup);
+      bindTxnActions(el);
       el.querySelector('[data-form="quick"]').addEventListener('submit', async (e) => {
         e.preventDefault();
         const input = e.target.q;

@@ -4,6 +4,7 @@ import {
   exportData, importData, validateBackup, eraseEverything, PALETTE, KIND_GROUPS, activeAccounts,
 } from '../store.js';
 import { budgetTotal, commitmentStatus } from '../calc.js';
+import { setupLock, disableLock, enableBiometric, biometricsAvailable } from '../lock.js';
 import { topbar, icon, dot, toast, confirmSheet, sheet, accountOptions, formData, tabbar, empty, purposeColor, purposeLabel, accName } from '../ui.js';
 
 const ago = (iso) => {
@@ -35,6 +36,11 @@ function toCsv() {
   return [cols.join(','), ...rows].join('\n');
 }
 
+export async function exportBackup() {
+  const ok = await deliverFile(`spend-tracker-backup-${nowLocal().slice(0, 10)}.json`, 'application/json', JSON.stringify(exportData(), null, 1));
+  if (ok) { await saveSettings({ lastBackupAt: new Date().toISOString() }); toast('Backup created — keep it somewhere safe'); }
+}
+
 export function settingsView() {
   const s = state.settings;
   const cs = commitmentStatus(state, monthKey());
@@ -45,7 +51,8 @@ export function settingsView() {
     html: html`
     <header class="page-head"><h1>Settings</h1></header>
     <div class="sec">PRIVACY</div>
-    <div class="list"><label class="toggle-row"><span>Hide balances by default<small>Tap the eye to show them for a moment</small></span><input type="checkbox" data-set="hideBalances" ${s.hideBalances ? 'checked' : ''}></label></div>
+    <div class="list"><label class="toggle-row"><span>Hide balances by default<small>Tap the eye to show them for a moment</small></span><input type="checkbox" data-set="hideBalances" ${s.hideBalances ? 'checked' : ''}></label>
+      <button type="button" class="list-row" data-act="lock"><span class="grow"><span class="r1">App lock</span><span class="r2">${s.lockPinHash ? `On · PIN${s.lockCredId ? ' + Face ID' : ''} · locks after 1 min away` : 'Off — ask for a PIN or Face ID to open'}</span></span>${icon.chev}</button></div>
 
     <div class="sec">ACCOUNTS</div>
     <div class="list">
@@ -81,13 +88,25 @@ export function settingsView() {
       <a class="list-row" href="#/help"><span class="grow"><span class="r1">Tips &amp; shortcuts</span><span class="r2">Quick add, screenshots, iPhone Shortcuts</span></span>${icon.chev}</a>
       <button type="button" class="list-row danger" data-act="erase"><span class="grow"><span class="r1">Erase all data</span><span class="r2">Start fresh on this device</span></span></button>
     </div>
-    <div class="foot">Your data stays on this device. Nothing is uploaded.<br>Spend Tracker v1.0</div>
+    <div class="foot">Your data stays on this device. Nothing is uploaded.<br>Spend Tracker v1.1</div>
     ${tabbar('settings')}`,
     mount(el) {
       el.querySelector('[data-set="hideBalances"]').addEventListener('change', (e) => saveSettings({ hideBalances: e.target.checked }));
-      el.querySelector('[data-act="export"]').addEventListener('click', async () => {
-        const ok = await deliverFile(`spend-tracker-backup-${nowLocal().slice(0, 10)}.json`, 'application/json', JSON.stringify(exportData(), null, 1));
-        if (ok) { await saveSettings({ lastBackupAt: new Date().toISOString() }); toast('Backup created — keep it somewhere safe'); }
+      el.querySelector('[data-act="export"]').addEventListener('click', exportBackup);
+      el.querySelector('[data-act="lock"]').addEventListener('click', async () => {
+        if (!s.lockPinHash) { await setupLock(); return; }
+        const bio = await biometricsAvailable();
+        sheet(String(html`<h2 class="sheet-title">App lock</h2><p class="sheet-body">On${s.lockCredId ? ' with Face ID' : ''}. The app locks when you leave it for more than a minute.</p>
+          <div class="stack-btns">${bio && !s.lockCredId ? html`<button type="button" class="btn btn-primary" data-l="bio">Add Face ID</button>` : ''}<button type="button" class="btn" data-l="pin">Change PIN</button><button type="button" class="btn btn-danger" data-l="off">Turn off</button><button type="button" class="btn" data-close>Close</button></div>`), {
+          onMount(panel, close) {
+            panel.querySelectorAll('[data-l]').forEach((b) => b.addEventListener('click', async () => {
+              close();
+              if (b.dataset.l === 'bio') await enableBiometric();
+              if (b.dataset.l === 'pin') { await disableLock(); if (!state.settings.lockPinHash) await setupLock(); }
+              if (b.dataset.l === 'off') await disableLock();
+            }));
+          },
+        });
       });
       el.querySelector('[data-act="csv"]').addEventListener('click', () => deliverFile(`spend-tracker-${nowLocal().slice(0, 10)}.csv`, 'text/csv', toCsv()));
       el.querySelector('[data-act="import"]').addEventListener('change', async (e) => {

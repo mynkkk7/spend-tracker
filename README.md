@@ -22,7 +22,15 @@ Your data stays on your phone and nothing is uploaded.
   - **Commitments:** EMIs, SIPs, insurance and bills, with a tick-off list for each month.
   - **Salary split:** works out how much each account needs this month, based on its commitments, your day-to-day money, the planned-expense set-aside, and an optional % split of whatever is left over.
   - **Planned expenses:** future one-time costs, with a warning like "January is short by ₹9,000" and the monthly set-aside that would fix it.
-- **Insights:** spending vs last month (same days), savings rate, average per day, projected month-end vs budget, money out by kind, essential vs non-essential, a category donut with % change, budgets, daily bars, a 6-month trend, habits, a by-label breakdown, and top payees.
+- **Insights**, for all accounts or one account at a time:
+  - **Worth a look:** the biggest findings this month in plain sentences, e.g. budget burn dates, categories well above your usual, small-spend leaks, unlogged money, EMI burden, spike days and late-night spending.
+  - Spending vs your usual by this date (3-month average), savings rate, average per day, projected month-end.
+  - Money out by kind, essential vs non-essential, category donut, budgets with burn dates, small spends, daily bars and spike days, weekday vs weekend, regular payments, fixed vs flexible income, a 6-month trend, habits, labels, top and new payees.
+  - Account tabs: cash flow (where money came from and went), net added per month, and balance trend. Salary, savings and investment accounts get a flow view instead of a spending view.
+  - Almost every number opens the exact list of entries behind it.
+- **Quick tidy-up:** press and hold an entry to change its category, duplicate or delete it. "Tag now" walks through untagged entries one by one.
+- **Labels on the fly:** "+ New label" on the entry screen adds a label (e.g. Washing) to the category.
+- **App lock:** a 4-digit PIN, plus Face ID where supported. It locks after a minute away. It hides the screen but doesn't encrypt the data.
 - **Backup:** JSON export/restore (replace, or merge in only what's new) and CSV export.
 - **Works offline** once installed. It's dark only.
 
@@ -70,6 +78,8 @@ Plain ES modules with no build step and no framework.
 | `js/db.js` | IndexedDB wrapper |
 | `js/store.js` | In-memory state, CRUD, defaults, backup/restore |
 | `js/calc.js` | Pure calculations: balances, month summaries, commitments, salary split, planned projection |
+| `js/findings.js` | Turns the numbers into the "Worth a look" findings |
+| `js/lock.js` | PIN and Face ID app lock (WebAuthn) |
 | `js/parse.js` | Quick-add and payment-text parsing, category suggestion |
 | `js/ocr.js` | On-device OCR with Tesseract.js 5, vendored under `vendor/tesseract/` |
 | `js/charts.js` | Small SVG charts with tap tooltips |
