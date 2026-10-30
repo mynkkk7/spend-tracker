@@ -15,6 +15,10 @@ Your data stays on your phone and nothing is uploaded.
   - **Screenshot** of a GPay, PhonePe, Paytm or bank screen. The text is read on the phone with offline OCR, and the app fills in the amount, payee, note, date, UPI ref and account (matched by its last 4 digits).
   - **Paste** a bank SMS.
   - **Manual** entry.
+- **Import many at once:** paste or open a file of bank SMS (an iPhone Shortcut can collect them automatically — see Tips in the app), or pick a credit-card statement PDF (ICICI and RBL tested). You review everything before it's saved. Duplicates are flagged, a debit and a matching credit between your own accounts become a transfer, and the SMS balance is checked against the app's.
+- **Credit cards:** limit, statement and due day, and the account the bill is paid from. The card page shows what you owe, what's billed and due, what's not billed yet, and EMIs on the card. The paying account shows the money left **after card dues**, and Home shows the bill with a **Pay** button. Card EMIs count in your EMI burden. Interest, GST and forex fees go to "Bank charges & fees".
+- **Events:** a trip or occasion with dates, a budget and an optional local currency. Entries dated inside it are linked automatically, earlier bookings can be linked by press-and-hold, and the event page splits spending into before / during / after with a per-day chart. Big events can be kept out of monthly insights.
+- **Category pages:** 12 months against the budget, labels, where the money went, and the entries.
 - **Kinds → Categories → Labels:** only "Expense" kinds count as spending. Loan/EMI, Investment, Insurance and Savings are tracked separately. Labels give sub-types, e.g. Bike → Petrol / Service.
 - **Auto-categorise:** the app suggests a category from keywords, from labels, and from what you chose last time for the same payee or UPI ID.
 - **Duplicate check:** the app warns you if the same UPI reference has already been saved.
@@ -81,6 +85,8 @@ Plain ES modules with no build step and no framework.
 | `js/findings.js` | Turns the numbers into the "Worth a look" findings |
 | `js/lock.js` | PIN and Face ID app lock (WebAuthn) |
 | `js/parse.js` | Quick-add and payment-text parsing, category suggestion |
+| `js/importers.js` | Bank SMS and card statement parsing, duplicate checks |
+| `js/pdftext.js` | Reads PDF text on the device with pdf.js, vendored under `vendor/pdfjs/` |
 | `js/ocr.js` | On-device OCR with Tesseract.js 5, vendored under `vendor/tesseract/` |
 | `js/charts.js` | Small SVG charts with tap tooltips |
 | `js/views/*` | One file per screen |
@@ -88,10 +94,10 @@ Plain ES modules with no build step and no framework.
 
 Money is stored as integer paise, and dates as local `YYYY-MM-DDTHH:mm` strings.
 
-The data model (`Account`, `Kind`, `Category`, `Txn`, `Commitment`, `Planned`, `settings`) is documented by the JSON backup format. That's the contract to keep if this is ever ported to Swift or folded into another app.
+The data model (`Account`, `Kind`, `Category`, `Txn`, `Commitment`, `Planned`, `Event`, `settings`) is documented by the JSON backup format. That's the contract to keep if this is ever ported to Swift or folded into another app.
 
 ## Privacy
 
 There are no analytics, no network calls for your data, and no accounts. Each phone keeps its own separate data, so two people using the same link never see each other's entries.
 
-Third-party code: Tesseract.js and tesseract.js-core (Apache-2.0), with licences in `vendor/tesseract/`.
+Third-party code: Tesseract.js and tesseract.js-core (Apache-2.0), with licences in `vendor/tesseract/`; pdf.js (Apache-2.0), licence in `vendor/pdfjs/`.

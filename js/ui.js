@@ -45,13 +45,13 @@ export const accName = (id) => account(id)?.name || 'Deleted account';
 
 export function txnTitle(t) {
   if (t.type === 'transfer') return `${accName(t.accountId)} → ${accName(t.toAccountId)}`;
-  if (t.type === 'adjust') return 'Balance fixed';
+  if (t.type === 'adjust') return t.source === 'card-emi' ? (t.note || 'Card EMI') : 'Balance fixed';
   return t.note || t.payee || category(t.categoryId)?.name || (t.type === 'in' ? 'Money in' : 'Untagged');
 }
 export function txnMeta(t, { showAccount = true } = {}) {
   const parts = [];
   if (t.type === 'transfer') parts.push('Transfer · not spending');
-  else if (t.type === 'adjust') parts.push('Correction');
+  else if (t.type === 'adjust') parts.push(t.source === 'card-emi' ? 'EMI · not spending' : 'Correction');
   else {
     const c = category(t.categoryId);
     const k = kind(t.kindId);
@@ -61,6 +61,7 @@ export function txnMeta(t, { showAccount = true } = {}) {
     if (t.payee && t.note && t.payee !== t.note) parts.push(t.payee);
   }
   if (showAccount && t.type !== 'transfer') parts.push(accName(t.accountId));
+  if (t.eventId) { const e = state.events.find((x) => x.id === t.eventId); if (e) parts.push(e.name); }
   return parts.join(' · ');
 }
 export function txnColor(t) {
@@ -195,12 +196,18 @@ async function txnActionsSheet(id) {
   const cats = canTag ? state.categories.filter((c) => !c.archived && (group ? kind(c.kindId)?.group === 'income' : kind(c.kindId)?.group !== 'income')) : [];
   sheet(String(html`<h2 class="sheet-title">${txnTitle(t)}</h2><p class="sheet-body">${money(t.type === 'out' ? -t.amount : t.amount)} · ${t.date.slice(0, 10)}</p>
     ${canTag ? html`<div class="field"><span>Change category</span><div class="chips">${cats.map((c) => html`<button type="button" class="chip" data-pick="${c.id}" aria-pressed="${t.categoryId === c.id}">${dot(c.color)}${c.name}</button>`)}</div></div>` : ''}
+    ${t.type === 'out' || t.type === 'in' ? (() => { const evs = state.events.filter((e) => !e.archived || e.id === t.eventId); return evs.length ? html`<div class="field"><span>Event</span><div class="chips"><button type="button" class="chip" data-ev="" aria-pressed="${!t.eventId}">None</button>${evs.map((e) => html`<button type="button" class="chip" data-ev="${e.id}" aria-pressed="${t.eventId === e.id}">${e.name}</button>`)}</div></div>` : ''; })() : ''}
     <div class="stack-btns"><a class="btn" href="#/txn/${t.id}" data-close>Edit</a><a class="btn" href="#/add?dup=${t.id}" data-close>Duplicate</a><button type="button" class="btn btn-danger" data-del>Delete</button></div>`), {
     onMount(panel, close) {
       panel.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', async () => {
         const c = category(b.dataset.pick);
         await saveTxn({ ...t, categoryId: c.id, kindId: c.kindId, label: c.labels?.includes(t.label) ? t.label : null, essential: t.type === 'out' ? !!c.essential : false });
         close(); toast(`Moved to ${c.name}`);
+      }));
+      panel.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', async () => {
+        const ev = state.events.find((e) => e.id === b.dataset.ev);
+        await saveTxn({ ...t, eventId: ev?.id || null });
+        close(); toast(ev ? `Added to ${ev.name}` : 'Removed from event');
       }));
       panel.querySelector('[data-del]').addEventListener('click', async () => {
         close(); await deleteTxn(t.id);

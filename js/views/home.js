@@ -1,6 +1,7 @@
 import { html, money, monthKey, monthLabel, shortDate, nowLocal, ordinal } from '../util.js';
 import { state, activeAccounts, saveTxn, kindByKey, incomeKind, category, account } from '../store.js';
-import { totalBalance, balance, pace, compareToPrevious, commitmentStatus, salarySplit, plannedProjection, untaggedTxns } from '../calc.js';
+import { totalBalance, balance, pace, compareToPrevious, commitmentStatus, salarySplit, plannedProjection, untaggedTxns, commitmentsDueNow, cardBillsDue, afterCardDues, eventSummary } from '../calc.js';
+import { markPaidSheet } from './plan.js';
 import { parseQuick } from '../parse.js';
 import { icon, bal, privacy, purposeLabel, purposeColor, txnRow, toast, progress, tabbar, empty, bindTxnActions } from '../ui.js';
 import { exportBackup } from './settings.js';
@@ -19,6 +20,10 @@ export function homeView() {
   const backupDue = state.txns.length >= 5 && (!state.settings.lastBackupAt || Date.now() - Date.parse(state.settings.lastBackupAt) > 7 * 864e5);
   const hasPlan = cs.count || split.configured || state.planned.length;
   const nextPlanned = plan.rows[0];
+  const dueNow = commitmentsDueNow(state);
+  const bills = cardBillsDue(state);
+  const today = nowLocal().slice(0, 10);
+  const events = state.events.filter((e) => !e.archived && e.start && (e.end || e.start).slice(0, 10) >= addDaysStr(today, -14)).slice(0, 2).reverse();
 
   return {
     tab: 'home', live: true,
@@ -54,6 +59,21 @@ export function homeView() {
         <small class="${plan.firstShort ? 'debit' : ''}">${plan.firstShort ? `${monthLabel(plan.firstShort.mk, false).split(' ')[0]} is short by ${money(plan.firstShort.short)}` : (nextPlanned ? 'Covered by your set-aside' : '')}</small></span>${icon.chev}</a>` : ''}
     </section>` : html`<a class="card setup-nudge" href="#/commitments"><b>Set up your monthly plan</b><small>Add EMIs, SIPs and bills once — see what’s paid, and how to split your salary.</small></a>`}
 
+    ${dueNow.length || bills.length ? html`<section class="card plan mt12">
+      <div class="plan-head"><h2>Due now</h2><span class="muted small">tap to record</span></div>
+      ${bills.map((b) => html`<div class="plan-row due-row"><span class="grow"><b>${b.card.name} bill · ${money(b.dueLeft ?? b.owed)}</b>
+        <small class="${b.daysToDue < 0 ? 'debit' : b.daysToDue <= 3 ? 'warn-text' : ''}">${b.daysToDue < 0 ? `Overdue by ${-b.daysToDue} day${b.daysToDue === -1 ? '' : 's'}` : b.daysToDue === 0 ? 'Due today' : `Due in ${b.daysToDue} day${b.daysToDue === 1 ? '' : 's'} · ${shortDate(b.dueDate)}`}${b.payFromId ? ` · from ${account(b.payFromId)?.name}` : ''}</small></span>
+        <a class="btn btn-sm btn-primary" href="#/add?type=transfer${b.payFromId ? `&account=${b.payFromId}` : ''}&to=${b.card.id}&amt=${(b.dueLeft ?? b.owed) / 100}&note=Card%20bill">Pay</a></div>`)}
+      ${dueNow.map((i) => html`<div class="plan-row due-row"><span class="grow"><b>${i.c.name} · ${i.c.variable ? '~' : ''}${money(i.amount)}</b>
+        <small class="${i.c.dueDay < Number(today.slice(8, 10)) ? 'debit' : ''}">${i.c.dueDay < Number(today.slice(8, 10)) ? 'Overdue · ' : i.c.dueDay === Number(today.slice(8, 10)) ? 'Today · ' : ''}${ordinal(i.c.dueDay)} · ${account(i.c.accountId)?.name || ''}${i.c.variable ? ' · confirm amount' : ''}</small></span>
+        <button type="button" class="btn btn-sm" data-paid="${i.c.id}">Mark paid</button></div>`)}
+    </section>` : ''}
+
+    ${events.map((e) => { const s = eventSummary(state, e); return html`<a class="card plan-row mt12" href="#/event/${e.id}" style="display:flex">
+      <span class="grow"><b>${e.name} · ${money(s.spent)}${s.budget ? ` of ${money(s.budget)}` : ''}</b>
+      <small class="${s.budget && s.spent > s.budget ? 'debit' : 'muted'}">${s.status === 'upcoming' ? `In ${s.daysToGo} day${s.daysToGo === 1 ? '' : 's'}` : s.status === 'on' ? 'On now — entries are added to it automatically' : 'Finished'}${s.budget ? ` · ${s.left >= 0 ? `${money(s.left)} left` : `${money(-s.left)} over`}` : ''}</small>
+      ${s.budget ? progress(s.spent, s.budget, { over: s.spent > s.budget }) : ''}</span>${icon.chev}</a>`; })}
+
     <form class="quick" data-form="quick" autocomplete="off">
       <label class="grow"><span class="sr">Quick add</span><input name="q" placeholder="Quick add: 40 tea" enterkeyhint="done" inputmode="text"></label>
       <button class="btn btn-primary" type="submit">Add</button>
@@ -68,7 +88,8 @@ export function homeView() {
       ${accts.map((a) => html`<a class="acc-card" href="#/account/${a.id}">
         <span class="role">${raw0(purposeColor(a.purpose))}${purposeLabel(a.purpose).toUpperCase()}</span>
         <span class="name">${a.name}</span>
-        <span class="bal num ${balance(state, a.id) < 0 ? 'debit' : ''}">${bal(balance(state, a.id))}</span></a>`)}
+        <span class="bal num ${balance(state, a.id) < 0 ? 'debit' : ''}">${bal(balance(state, a.id))}</span>
+        ${(() => { const d = afterCardDues(state, a.id); return d && d.owed ? html`<span class="sub">after cards ${bal(d.after)}</span>` : ''; })()}</a>`)}
       <a class="acc-card add" href="#/settings/accounts/new">+ Add account</a>
     </div>
 
@@ -79,6 +100,7 @@ export function homeView() {
       el.querySelector('[data-act="toggle-reveal"]')?.addEventListener('click', () => { privacy.revealed = !privacy.revealed; refresh(); });
       el.querySelector('[data-act="backup"]')?.addEventListener('click', exportBackup);
       bindTxnActions(el);
+      el.querySelectorAll('[data-paid]').forEach((b) => b.addEventListener('click', () => markPaidSheet(state.commitments.find((c) => c.id === b.dataset.paid), mk)));
       el.querySelector('[data-form="quick"]').addEventListener('submit', async (e) => {
         e.preventDefault();
         const input = e.target.q;
@@ -100,5 +122,6 @@ export function homeView() {
   };
 }
 
+const addDaysStr = (day, n) => new Date(Date.parse(day + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const raw0 = (color) => html`<i style="background:${color}"></i>`;
 export { shortDate };

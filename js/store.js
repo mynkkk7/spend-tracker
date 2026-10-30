@@ -79,7 +79,7 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const state = {
-  accounts: [], kinds: [], categories: [], txns: [], commitments: [], planned: [],
+  accounts: [], kinds: [], categories: [], txns: [], commitments: [], planned: [], events: [],
   settings: { ...DEFAULT_SETTINGS },
   ready: false,
 };
@@ -92,7 +92,7 @@ export async function load() {
   const all = await db.loadAll();
   Object.assign(state, {
     accounts: all.accounts, kinds: all.kinds, categories: all.categories,
-    txns: all.txns, commitments: all.commitments, planned: all.planned,
+    txns: all.txns, commitments: all.commitments, planned: all.planned, events: all.events || [],
   });
   const s = all.meta.find((m) => m.id === 'settings');
   state.settings = { ...DEFAULT_SETTINGS, ...(s || {}) };
@@ -107,6 +107,7 @@ function sortAll() {
   state.txns.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
   state.commitments.sort((a, b) => a.dueDay - b.dueDay || a.name.localeCompare(b.name));
   state.planned.sort((a, b) => a.month.localeCompare(b.month));
+  state.events.sort((a, b) => (b.start || '').localeCompare(a.start || ''));
 }
 
 const stamp = (o) => {
@@ -141,6 +142,14 @@ export const savePlanned = (p) => upsert('planned', p);
 export const deleteTxn = (id) => remove('txns', id);
 export const deleteCommitment = (id) => remove('commitments', id);
 export const deletePlanned = (id) => remove('planned', id);
+export const saveEvent = (e) => upsert('events', e);
+export async function deleteEvent(id) {
+  const affected = state.txns.filter((t) => t.eventId === id).map((t) => ({ ...t, eventId: null }));
+  state.txns = state.txns.map((t) => (t.eventId === id ? { ...t, eventId: null } : t));
+  if (affected.length) await db.putMany('txns', affected);
+  await remove('events', id);
+}
+export const event = (id) => state.events.find((e) => e.id === id);
 
 export async function deleteAccount(id) {
   // Only allowed when nothing references it (enforced in UI); archive otherwise.
@@ -206,7 +215,7 @@ export function exportData() {
   return {
     app: 'spend-tracker', version: 1, exportedAt: new Date().toISOString(),
     accounts: state.accounts, kinds: state.kinds, categories: state.categories,
-    txns: state.txns, commitments: state.commitments, planned: state.planned,
+    txns: state.txns, commitments: state.commitments, planned: state.planned, events: state.events,
     meta: [state.settings],
   };
 }
@@ -223,10 +232,10 @@ export async function importData(data, mode = 'replace') {
   if (err) throw new Error(err);
   const incoming = {
     accounts: data.accounts, kinds: data.kinds, categories: data.categories, txns: data.txns,
-    commitments: data.commitments || [], planned: data.planned || [], meta: data.meta || [],
+    commitments: data.commitments || [], planned: data.planned || [], events: data.events || [], meta: data.meta || [],
   };
   if (mode === 'merge') {
-    for (const s of ['accounts', 'kinds', 'categories', 'txns', 'commitments', 'planned']) {
+    for (const s of ['accounts', 'kinds', 'categories', 'txns', 'commitments', 'planned', 'events']) {
       const have = new Set(state[s].map((x) => x.id));
       const add = incoming[s].filter((x) => !have.has(x.id));
       if (add.length) { state[s].push(...add); await db.putMany(s, add); }

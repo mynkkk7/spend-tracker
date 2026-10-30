@@ -8,6 +8,9 @@ export const groupOfTxn = (st, t) => {
   return kindOf(st, t.kindId)?.group || 'spending';
 };
 
+/** Events marked "keep out of monthly insights" (e.g. a big trip that would swamp the month). */
+export const excludedEventIds = (st) => new Set((st.events || []).filter((e) => e.excludeFromInsights).map((e) => e.id));
+
 // ---------- balances ----------
 export function balance(st, accountId, until = null) {
   const a = st.accounts.find((x) => x.id === accountId);
@@ -20,7 +23,7 @@ export function balance(st, accountId, until = null) {
     // Entries dated after the opening moment count. Entries in the very same minute count only if they were
     // added after the balance was typed in (otherwise they're already part of it).
     if (t.date < from.slice(0, 16) || (t.date.slice(0, 16) === from.slice(0, 16) && !(t.createdAt > setAt))) continue;
-    if (until && t.date.slice(0, 10) > until) continue;
+    if (until && t.date.slice(0, until.length) > until) continue; // until: a day or a date-time
     if (t.type === 'in' && t.accountId === accountId) b += t.amount;
     else if (t.type === 'out' && t.accountId === accountId) b -= t.amount;
     else if (t.type === 'transfer') {
@@ -38,7 +41,8 @@ export const txnsInMonth = (st, mk) => st.txns.filter((t) => monthOf(t.date) ===
 
 /** Totals for a month, optionally only up to day N (for fair month-to-month comparison). */
 export function monthSummary(st, mk, uptoDay = 31) {
-  const list = txnsInMonth(st, mk).filter((t) => Number(t.date.slice(8, 10)) <= uptoDay);
+  const skip = excludedEventIds(st);
+  const list = txnsInMonth(st, mk).filter((t) => Number(t.date.slice(8, 10)) <= uptoDay && !(t.eventId && skip.has(t.eventId)));
   const out = { spent: 0, income: 0, fixed: 0, saving: 0, essential: 0, nonEssential: 0, untagged: 0, byKind: {}, byCategory: {}, count: 0 };
   for (const t of list) {
     const g = groupOfTxn(st, t);
@@ -356,14 +360,15 @@ export function burden(st, mk) {
   const fixed = byGroup((k) => k?.group === 'fixed');
   const saving = byGroup((k) => k?.group === 'saving');
   const bills = byGroup((k) => k?.group === 'spending');
-  const committed = sum(active, (c) => c.amount);
+  const cardEmi = sum(cardEmisInMonth(st, mk), (e) => e.monthly);
+  const committed = sum(active, (c) => c.amount) + cardEmi;
   const pc = (v) => (income ? Math.round((v / income) * 100) : null);
-  return { income, loans, fixed, saving, bills, committed, flexible: income - committed, loanPct: pc(loans), fixedPct: pc(fixed), committedPct: pc(committed) };
+  return { income, loans: loans + cardEmi, cardEmi, fixed: fixed + cardEmi, saving, bills, committed, flexible: income - committed, loanPct: pc(loans + cardEmi), fixedPct: pc(fixed + cardEmi), committedPct: pc(committed) };
 }
 
 /** Money that left (or appeared in) accounts without an entry — the sum of balance corrections. */
 export function unlogged(st, mk) {
-  const list = txnsInMonth(st, mk).filter((t) => t.type === 'adjust');
+  const list = txnsInMonth(st, mk).filter((t) => t.type === 'adjust' && t.source !== 'card-emi');
   return { missingOut: -sum(list.filter((t) => t.amount < 0), (t) => t.amount), missingIn: sum(list.filter((t) => t.amount > 0), (t) => t.amount), count: list.length };
 }
 
@@ -449,4 +454,159 @@ export function balanceTrend(st, accountIds, endMk, n = 6, today = nowLocal()) {
     out.push({ mk, value: any ? total : null });
   }
   return out;
+}
+
+// ---------- credit cards ----------
+const iso = (d) => d.toISOString().slice(0, 10);
+const addDays = (day, n) => iso(new Date(Date.parse(day + 'T00:00:00Z') + n * 864e5));
+function dayInMonth(mk, d) { return `${mk}-${String(Math.min(d, daysInMonth(mk))).padStart(2, '0')}`; }
+
+/** Card EMIs (from statements) with an instalment in month mk. */
+export function cardEmisInMonth(st, mk) {
+  const out = [];
+  for (const a of st.accounts) {
+    if (a.purpose !== 'credit' || a.archived) continue;
+    for (const e of a.emis || []) if (e.start && e.end && e.start.slice(0, 7) <= mk && e.end.slice(0, 7) >= mk) out.push({ ...e, cardId: a.id });
+  }
+  return out;
+}
+
+/** Where a credit card stands: what you owe, what's billed and due, what's not billed yet. */
+export function cardStatus(st, cardId, today = nowLocal()) {
+  const a = st.accounts.find((x) => x.id === cardId);
+  if (!a || a.purpose !== 'credit') return null;
+  const day = dayOf(today);
+  const owed = Math.max(0, -balance(st, cardId));
+  const ls = a.lastStatement || null;
+  let dueDate = ls?.dueDate || null;
+  if (!dueDate && a.dueDay) {
+    const mk = monthOf(day);
+    dueDate = dayInMonth(mk, a.dueDay);
+    if (dueDate < day) dueDate = dayInMonth(addMonths(mk, 1), a.dueDay);
+  }
+  // Payments made after the statement reduce what's due on it.
+  const paid = ls ? sum(st.txns.filter((t) => t.date.slice(0, 10) > ls.date && ((t.type === 'transfer' && t.toAccountId === cardId) || (t.type === 'in' && t.accountId === cardId && !t.categoryId))), (t) => t.amount) : 0;
+  const billedLeft = ls ? Math.max(0, (ls.totalDue || 0) - paid) : null;
+  const dueLeft = billedLeft == null ? null : Math.min(billedLeft, owed);
+  const unbilled = dueLeft == null ? owed : Math.max(0, owed - dueLeft);
+  const statementStale = !!ls && day > addDays(ls.date, 34); // the next statement should have arrived by now
+  const emis = (a.emis || []).filter((e) => !e.end || e.end.slice(0, 7) >= monthOf(day));
+  const emiLeft = sum(emis, (e) => remainingEmi(e, day));
+  const daysToDue = dueDate ? Math.round((Date.parse(dueDate) - Date.parse(day)) / 864e5) : null;
+  return {
+    card: a, owed, limit: a.limit || 0, available: a.limit ? a.limit - owed - emiLeft : null,
+    usedPct: a.limit ? Math.round(((owed + emiLeft) / a.limit) * 100) : null,
+    statement: ls, dueDate, daysToDue, dueLeft, unbilled, paidSinceStatement: paid, statementStale,
+    emis, emiLeft, payFromId: a.payFromId || null,
+  };
+}
+
+/** EMI principal not yet billed, as of a day. */
+export function remainingEmi(e, day) {
+  if (e.schedule?.length) { // exact, from the bank's amortization schedule
+    const done = e.schedule.filter((r) => r.date <= day);
+    return done.length ? done[done.length - 1].balance : e.principal;
+  }
+  if (!e.monthly || !e.end) return e.outstanding || 0;
+  let left = 0;
+  // Each instalment after `day` is still to come; use principal share when known.
+  const n = e.months || 0;
+  const per = n ? Math.round(e.principal / n) : e.monthly;
+  let d = e.start;
+  for (let i = 0; i < (n || 120) && d <= e.end; i++) {
+    if (d > day) left += per;
+    d = addMonthsDay(d, 1);
+  }
+  return Math.min(left, e.outstanding ?? left) || 0;
+}
+function addMonthsDay(dayStr, n) {
+  const mk = addMonths(dayStr.slice(0, 7), n);
+  return dayInMonth(mk, Number(dayStr.slice(8, 10)));
+}
+
+/** Cards paid from this account, and the money left after setting their dues aside. */
+export function afterCardDues(st, accountId, today = nowLocal()) {
+  const cards = st.accounts.filter((a) => a.purpose === 'credit' && !a.archived && a.payFromId === accountId);
+  if (!cards.length) return null;
+  const rows = cards.map((c) => cardStatus(st, c.id, today));
+  const owed = sum(rows, (r) => r.owed);
+  const b = balance(st, accountId);
+  return { balance: b, owed, after: b - owed, cards: rows };
+}
+
+/** Card bills worth showing on Home: due within `days` days, or overdue. */
+export function cardBillsDue(st, today = nowLocal(), days = 10) {
+  return st.accounts.filter((a) => a.purpose === 'credit' && !a.archived).map((a) => cardStatus(st, a.id, today))
+    .filter((s) => s && s.daysToDue != null && s.daysToDue <= days && (s.dueLeft ?? s.owed) > 0)
+    .sort((x, y) => x.daysToDue - y.daysToDue);
+}
+
+/** Commitments due in the next few days (or overdue) that aren't marked paid yet. */
+export function commitmentsDueNow(st, today = nowLocal(), ahead = 2) {
+  const mk = monthOf(today);
+  const d = Number(today.slice(8, 10));
+  return commitmentStatus(st, mk).items.filter((i) => !i.paid && i.c.dueDay <= d + ahead).sort((a, b) => a.c.dueDay - b.c.dueDay);
+}
+
+// ---------- events ----------
+export function eventSummary(st, ev, today = nowLocal()) {
+  const list = st.txns.filter((t) => t.eventId === ev.id);
+  const out = list.filter((t) => t.type === 'out');
+  const back = list.filter((t) => t.type === 'in');
+  const spent = sum(out, (t) => t.amount) - sum(back, (t) => t.amount);
+  const start = (ev.start || '').slice(0, 10), end = (ev.end || ev.start || '').slice(0, 10);
+  const phase = (t) => (t.date.slice(0, 10) < start ? 'before' : t.date.slice(0, 10) > end ? 'after' : 'during');
+  const phases = { before: 0, during: 0, after: 0 };
+  for (const t of out) phases[phase(t)] += t.amount;
+  const byCat = {};
+  for (const t of out) byCat[t.categoryId || '_untagged'] = (byCat[t.categoryId || '_untagged'] || 0) + t.amount;
+  const days = [];
+  if (start && end) for (let d = start; d <= end; d = addDays(d, 1)) days.push({ day: d, v: sum(out.filter((t) => t.date.slice(0, 10) === d), (t) => t.amount) });
+  const byAccount = {};
+  for (const t of out) byAccount[t.accountId] = (byAccount[t.accountId] || 0) + t.amount;
+  const day = dayOf(today);
+  const status = !start ? 'open' : day < start ? 'upcoming' : day > end ? 'done' : 'on';
+  const daysToGo = status === 'upcoming' ? Math.round((Date.parse(start) - Date.parse(day)) / 864e5) : null;
+  const tripDays = start && end ? Math.round((Date.parse(end) - Date.parse(start)) / 864e5) + 1 : null;
+  // Entries dated inside the event that aren't linked to it yet — likely part of it.
+  const suggest = start ? st.txns.filter((t) => !t.eventId && t.type === 'out' && groupOfTxn(st, t) === 'spending' && t.date.slice(0, 10) >= start && t.date.slice(0, 10) <= end) : [];
+  return {
+    list, spent, refunds: sum(back, (t) => t.amount), budget: ev.budget || 0, left: (ev.budget || 0) - spent,
+    phases, byCat, days, byAccount, status, daysToGo, tripDays, suggest,
+    perDayDuring: tripDays ? Math.round(phases.during / Math.max(1, Math.min(tripDays, status === 'on' ? Math.round((Date.parse(day) - Date.parse(start)) / 864e5) + 1 : tripDays))) : 0,
+  };
+}
+
+/** The event an entry on this date most likely belongs to (dates inside the event). */
+export function eventForDate(st, date) {
+  const d = (date || '').slice(0, 10);
+  return (st.events || []).find((e) => !e.archived && e.start && d >= e.start.slice(0, 10) && d <= (e.end || e.start).slice(0, 10)) || null;
+}
+
+// ---------- one category ----------
+export function categoryDetail(st, catId, endMk, n = 12) {
+  const months = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const mk = addMonths(endMk, -i);
+    const list = txnsInMonth(st, mk).filter((t) => t.categoryId === catId && t.type === 'out');
+    months.push({ mk, v: sum(list, (t) => t.amount), count: list.length });
+  }
+  const cur = txnsInMonth(st, endMk).filter((t) => t.categoryId === catId && (t.type === 'out' || t.type === 'in'));
+  const labels = {};
+  for (const t of cur.filter((x) => x.type === 'out')) labels[t.label || '—'] = (labels[t.label || '—'] || 0) + t.amount;
+  const payees = {};
+  for (const t of cur.filter((x) => x.type === 'out')) {
+    const k = payeeKey(t) || (t.note || '').toLowerCase();
+    if (!k) continue;
+    (payees[k] ||= { name: t.payee || t.vpa || t.note, total: 0, count: 0 });
+    payees[k].total += t.amount; payees[k].count++;
+  }
+  const past = months.slice(0, -1).filter((m) => m.v > 0);
+  const avg = past.length ? Math.round(sum(past, (m) => m.v) / past.length) : 0;
+  return {
+    months, current: months[months.length - 1].v, avg, entries: cur,
+    labels: Object.entries(labels).sort((a, b) => b[1] - a[1]),
+    payees: Object.values(payees).sort((a, b) => b.total - a.total).slice(0, 8),
+    total12: sum(months, (m) => m.v),
+  };
 }

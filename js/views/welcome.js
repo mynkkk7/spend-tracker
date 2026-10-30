@@ -72,6 +72,24 @@ export function helpView() {
     <p>Copy a debit or credit SMS, tap <b>+</b> → <b>Paste text</b> → <b>Paste from clipboard</b>.</p>
     <h2>iPhone Shortcut (optional)</h2>
     <p>In the Shortcuts app create: <b>Get Latest Screenshots</b> (1) → <b>Extract Text from Image</b> → <b>Copy to Clipboard</b>. Run it after paying, then open Spend Tracker → + → Paste text → Paste from clipboard. Uses Apple’s own text recognition.</p>
+    <h2>Import many at once</h2>
+    <p><b>+</b> → <b>Import</b> takes a pile of bank SMS or a card statement PDF and shows everything found. Untick anything you don’t want, fix categories, then <b>Import</b>. Entries already in the app (same UPI ref, or same amount and account on the same day) are flagged and left unticked, so importing the same messages twice is safe.</p>
+    <p>A debit SMS from one of your accounts and a credit SMS of the same amount on another become one <b>transfer</b>. When the SMS shows the balance (“Bal INR …”), the app compares it with its own and offers a one-tap fix.</p>
+    <h2 id="sms-shortcut">Collect bank SMS automatically (iPhone)</h2>
+    <p>iPhone apps can’t read your messages, but a Shortcuts automation can save each bank SMS to a file for you. Set it up once:</p>
+    <ol>
+      <li>Open <b>Shortcuts</b> → <b>Automation</b> → <b>+</b> → <b>Message</b>.</li>
+      <li><b>Message Contains</b>: <code>debited</code> (make a second automation for <code>credited</code>). Optionally set <b>Sender</b> to your bank.</li>
+      <li>Choose <b>Run Immediately</b> (turn off “Notify When Run”) → <b>Next</b> → <b>New Blank Automation</b>.</li>
+      <li>Add <b>Text</b> with: <code>Current Date</code>, a new line, <code>Shortcut Input</code>, a new line, <code>---</code>. (Tap the variables to insert them; set the date format to ISO 8601.)</li>
+      <li>Add <b>Append to Text File</b>: the Text above → file <code>Shortcuts/bank-sms.txt</code> in iCloud Drive (turn on “Make New Line”).</li>
+    </ol>
+    <p>Every few days: <b>+</b> → <b>Import</b> → <b>Open SMS file</b> → pick <code>bank-sms.txt</code>. Messages you’ve already imported are skipped. Messages stay on your phone — the file is in your own iCloud Drive.</p>
+    <h2>Credit cards</h2>
+    <p>Add each card as an account with purpose <b>Credit card</b> and set <b>Bill paid from</b>. Card spends then show as <b>after card dues</b> on that bank account — the money that’s really free. When the bill is due, Home shows it with a <b>Pay</b> button that fills in the transfer.</p>
+    <p>Import the monthly statement PDF: it adds the card’s entries, the bill amount and due date, interest and fees (as “Bank charges &amp; fees”), and any EMIs. An EMI purchase counts as spending once, when you bought it; the monthly instalments only reduce what’s left on the EMI.</p>
+    <h2>Events (trips, weddings)</h2>
+    <p>Settings → <b>Events</b>. Give it dates and a budget. Entries dated inside the event are linked automatically; bookings made months earlier can be linked by pressing and holding the entry. Set a local currency (e.g. VND and how many make ₹1) to type amounts as you see them on the bill.</p>
     <h2>Monthly plan</h2>
     <p><b>Commitments</b> are what you pay every month (EMIs, SIPs, insurance, bills). Tick them off as they’re paid. <b>Salary split</b> works out how much each account needs this month. <b>Planned expenses</b> warns you early when a big cost won’t be covered.</p>
     <h2>Faster tidying</h2>

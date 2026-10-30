@@ -132,13 +132,13 @@ function spendingBody(accId, mk, isCur, dl, nav) {
       <table class="cat-table"><caption class="sr">Spending by category</caption><thead><tr><th>Category</th><th class="r">Spent</th><th class="r">${useUsual ? 'vs usual' : 'Change'}</th></tr></thead><tbody>
       ${cats.map((x) => {
         const ch = useUsual ? vu.rows[x.id]?.change : cmp.byCategory[x.id]?.change;
-        return html`<tr><td><a class="row gap8" href="${x.c ? dl({ cat: x.id }) : '#/tag'}">${dot(x.c?.color || '#6e6d68')}${x.c ? x.c.name : 'Untagged'}</a></td><td class="r num b">${money(x.v)}</td>
+        return html`<tr><td><a class="row gap8" href="${x.c ? (accId ? dl({ cat: x.id }) : `#/category/${x.id}?m=${mk}`) : '#/tag'}">${dot(x.c?.color || '#6e6d68')}${x.c ? x.c.name : 'Untagged'}</a></td><td class="r num b">${money(x.v)}</td>
         <td class="r num ${ch > 10 ? 'debit' : ch < -10 ? 'credit' : 'muted'}">${ch == null ? 'new' : ch === 0 ? '0%' : `${ch > 0 ? '▲' : '▼'} ${Math.abs(ch)}%`}</td></tr>`;
       })}
       </tbody></table></section>` : ''}
 
     ${burn.length ? html`<section class="card mt12"><div class="row between"><h2>Budgets</h2><a href="#/settings/categories" class="small">Edit</a></div>
-      ${burn.map((b) => html`<a class="bg-row" href="${dl({ cat: b.c.id })}"><div class="row between small"><span>${b.c.name}</span><span><b class="num">${money(b.spent)}</b> / ${money(b.budget)}</span></div>${progress(b.spent, b.budget, { over: b.over })}
+      ${burn.map((b) => html`<a class="bg-row" href="${accId ? dl({ cat: b.c.id }) : `#/category/${b.c.id}?m=${mk}`}"><div class="row between small"><span>${b.c.name}</span><span><b class="num">${money(b.spent)}</b> / ${money(b.budget)}</span></div>${progress(b.spent, b.budget, { over: b.over })}
         <div class="small ${b.over ? 'debit' : b.crossDay ? 'warn-text' : 'muted'} mt4">${b.over ? `Over by ${money(b.spent - b.budget)}` : b.crossDay ? `At this pace, crosses on ${b.crossDay} ${monthShort(mk)}` : `${money(b.budget - b.spent)} left`}</div></a>`)}</section>` : ''}
 
     ${sm.count ? html`<section class="card mt12"><div class="row between"><h2>Small spends</h2><a class="small" href="${dl({ small: '1' })}">See all</a></div>

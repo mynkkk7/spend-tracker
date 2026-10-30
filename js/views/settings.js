@@ -70,6 +70,7 @@ export function settingsView() {
 
     <div class="sec">CATEGORIES</div>
     <div class="list">
+      <a class="list-row" href="#/events"><span class="grow"><span class="r1">Events</span><span class="r2">Trips and occasions with their own budget · ${state.events.filter((e) => !e.archived).length}</span></span>${icon.chev}</a>
       <a class="list-row" href="#/settings/categories"><span class="grow"><span class="r1">Categories &amp; budgets</span><span class="r2">${state.categories.filter((c) => !c.archived).length} categories${budgetTotal(state) ? ` · ${money(budgetTotal(state))}/month budget` : ''}</span></span>${icon.chev}</a>
       <a class="list-row" href="#/settings/kinds"><span class="grow"><span class="r1">Kinds</span><span class="r2">${state.kinds.map((k) => k.name).join(', ')}</span></span>${icon.chev}</a>
     </div>
@@ -77,6 +78,7 @@ export function settingsView() {
     <div class="sec" id="backup">BACKUP</div>
     ${backupOld && state.txns.length ? html`<div class="banner warn">Last backup ${ago(s.lastBackupAt)} — back up now. Your data lives only on this phone.</div>` : ''}
     <div class="list">
+      <a class="list-row" href="#/import"><span class="grow"><span class="r1">Import bank SMS or card statement</span><span class="r2">Add many entries at once · duplicates are skipped</span></span>${icon.chev}</a>
       <button type="button" class="list-row" data-act="export"><span class="grow"><span class="r1">Export backup</span><span class="r2">JSON file → save to iCloud Drive / Files · last ${ago(s.lastBackupAt)}</span></span>${icon.chev}</button>
       <label class="list-row"><span class="grow"><span class="r1">Restore from backup</span><span class="r2">Replace everything, or add what’s new</span></span>${icon.chev}<input type="file" accept="application/json,.json" data-act="import" hidden></label>
       <button type="button" class="list-row" data-act="csv"><span class="grow"><span class="r1">Export CSV</span><span class="r2">All entries — open in Numbers or Google Sheets</span></span>${icon.chev}</button>

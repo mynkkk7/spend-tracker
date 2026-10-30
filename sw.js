@@ -1,15 +1,17 @@
-// Service worker: app shell works offline; OCR files are cached the first time they're used.
+// Service worker: app shell works offline; OCR and PDF reader files are cached the first time they're used.
 // Bump VERSION whenever you change any app file so phones pick up the update.
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.2.0';
 const SHELL = `shell-${VERSION}`;
 const OCR = 'ocr-v5.1.1';
+const PDF = 'pdf-v4.10.38';
 
 const SHELL_FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
-  'js/app.js', 'js/db.js', 'js/findings.js', 'js/lock.js', 'js/store.js', 'js/util.js', 'js/calc.js', 'js/parse.js', 'js/ui.js', 'js/charts.js', 'js/ocr.js',
+  'js/app.js', 'js/db.js', 'js/findings.js', 'js/lock.js', 'js/store.js', 'js/util.js', 'js/calc.js', 'js/parse.js', 'js/ui.js', 'js/charts.js', 'js/ocr.js', 'js/importers.js', 'js/pdftext.js',
   'js/views/home.js', 'js/views/txnForm.js', 'js/views/txns.js', 'js/views/accounts.js', 'js/views/plan.js',
   'js/views/insights.js', 'js/views/settings.js', 'js/views/welcome.js', 'js/views/tag.js',
+  'js/views/import.js', 'js/views/events.js', 'js/views/category.js',
 ];
 
 self.addEventListener('install', (e) => {
@@ -19,7 +21,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== SHELL && k !== OCR).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => k !== SHELL && k !== OCR && k !== PDF).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -29,8 +31,9 @@ self.addEventListener('message', (e) => { if (e.data === 'skipWaiting') self.ski
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  if (url.pathname.includes('/vendor/tesseract/')) {
-    e.respondWith(caches.open(OCR).then(async (c) => {
+  const lazy = url.pathname.includes('/vendor/tesseract/') ? OCR : url.pathname.includes('/vendor/pdfjs/') ? PDF : null;
+  if (lazy) {
+    e.respondWith(caches.open(lazy).then(async (c) => {
       const hit = await c.match(e.request);
       if (hit) return hit;
       const res = await fetch(e.request);

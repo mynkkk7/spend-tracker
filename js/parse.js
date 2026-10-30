@@ -22,6 +22,8 @@ export function suggestCategory(st, { text = '', payee = '', vpa = '', direction
 
   const hay = ` ${normalize([text, payee, vpa].join(' '))} `;
   const squashed = hay.replace(/\s+/g, '');
+  // A label matches as a whole word, or as the start of a word ("petroleum" → Petrol).
+  const labelHit = (n) => n && (hay.includes(` ${n} `) || (n.length >= 4 && hay.includes(` ${n}`)));
   let best = null;
   for (const c of cats) {
     let score = 0;
@@ -33,7 +35,7 @@ export function suggestCategory(st, { text = '', payee = '', vpa = '', direction
     let label = null;
     for (const l of c.labels || []) {
       const n = normalize(l);
-      if (n && hay.includes(` ${n} `)) { label = l; score += 3; break; }
+      if (labelHit(n)) { label = l; score += 3; break; }
     }
     if (score > 0 && (!best || score > best.score)) best = { categoryId: c.id, label, kindId: c.kindId, score };
   }
@@ -41,7 +43,7 @@ export function suggestCategory(st, { text = '', payee = '', vpa = '', direction
     // A label word alone (e.g. "petrol") — pick the first category that owns that label.
     for (const c of cats) for (const l of c.labels || []) {
       const n = normalize(l);
-      if (n && hay.includes(` ${n} `)) return { categoryId: c.id, label: l, kindId: c.kindId, source: 'label' };
+      if (labelHit(n)) return { categoryId: c.id, label: l, kindId: c.kindId, source: 'label' };
     }
     return null;
   }

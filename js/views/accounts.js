@@ -1,7 +1,7 @@
-import { html, money, monthKey, monthLabel, addMonths, sum, parseAmount, toRupees, nowLocal, dayOf } from '../util.js';
+import { html, money, monthKey, monthLabel, addMonths, sum, parseAmount, toRupees, nowLocal, dayOf, shortDate, ordinal } from '../util.js';
 import { state, account, saveAccount, deleteAccount, saveSettings, saveTxn, ACCOUNT_PURPOSES, activeAccounts } from '../store.js';
-import { balance } from '../calc.js';
-import { bindTxnActions, topbar, bal, privacy, icon, purposeLabel, purposeColor, sheet, toast, confirmSheet, formData, tabbar, empty } from '../ui.js';
+import { balance, cardStatus, afterCardDues, remainingEmi } from '../calc.js';
+import { bindTxnActions, topbar, bal, privacy, icon, purposeLabel, purposeColor, sheet, toast, confirmSheet, formData, tabbar, empty, accountOptions } from '../ui.js';
 import { filterTxns, dayGroups } from './txns.js';
 
 export function accountView({ id }, query) {
@@ -28,6 +28,8 @@ export function accountView({ id }, query) {
       <div class="row gap8"><span class="big num ${b < 0 ? 'debit' : ''}">${bal(b)}</span>
         ${state.settings.hideBalances ? html`<button type="button" class="icon-btn sm" data-act="reveal" aria-label="${privacy.revealed ? 'Hide balance' : 'Show balance'}">${privacy.revealed ? icon.eye : icon.eyeOff}</button>` : ''}</div>
     </div>
+    ${a.purpose === 'credit' ? cardPanel(a) : ''}
+    ${afterDuesLine(a)}
     <div class="grid2 mt12">
       <div class="card kpi-card"><div class="k">Money in · ${monthLabel(mk, false).split(' ')[0]}</div><div class="v credit num">${money(moneyIn, { sign: true })}</div></div>
       <div class="card kpi-card"><div class="k">Money out · ${monthLabel(mk, false).split(' ')[0]}</div><div class="v num">${money(-moneyOut)}</div>${transfersOut ? html`<div class="s muted">incl. ${money(transfersOut)} transfers</div>` : ''}</div>
@@ -66,6 +68,33 @@ export function accountView({ id }, query) {
   };
 }
 
+function cardPanel(a) {
+  const s = cardStatus(state, a.id);
+  if (!s) return '';
+  const payBtn = s.payFromId && (s.dueLeft ?? s.owed) > 0
+    ? html`<a class="btn btn-primary grow" href="#/add?type=transfer&account=${s.payFromId}&to=${a.id}&amt=${toRupees(s.dueLeft ?? s.owed)}&note=${encodeURIComponent('Card bill')}">Pay ${money(s.dueLeft ?? s.owed)}</a>` : '';
+  return html`<div class="card mt12 card-sum">
+    <div class="row between"><span class="small muted">You owe</span><b class="num">${bal(s.owed)}</b></div>
+    ${s.statement ? html`<div class="row between"><span class="small muted">Statement ${shortDate(s.statement.date)} · due ${s.dueDate ? shortDate(s.dueDate) : '—'}</span><span class="num ${s.dueLeft && s.daysToDue != null && s.daysToDue < 0 ? 'debit' : ''}">${s.dueLeft ? `${money(s.dueLeft)} left` : html`<span class="credit">Paid</span>`}</span></div>
+      <div class="row between"><span class="small muted">Not billed yet</span><span class="num">${money(s.unbilled)}</span></div>`
+      : html`<div class="small muted mt8">Import a statement (+ → Import → Card statement) to see what’s billed and due.${a.dueDay ? ` Bill due on the ${ordinal(a.dueDay)}.` : ''}</div>`}
+    ${s.statementStale ? html`<div class="small warn-text mt8">A newer statement should be out — import it to update the due amount.</div>` : ''}
+    ${s.limit ? html`<div class="row between small muted mt12"><span>Limit used ${s.usedPct}%</span><span>${money(s.available)} free of ${money(s.limit)}</span></div>${progressBar(s.usedPct)}` : ''}
+    ${s.emis.length ? html`<div class="grp"><span>EMIS ON THIS CARD</span><span class="num">${money(s.emiLeft)} to go</span></div>
+      ${s.emis.map((e) => html`<div class="emi-row"><span>${e.name || 'EMI'}<small class="block muted">${money(e.monthly)}/month · ends ${shortDate(e.end)}${e.interest ? ` · interest ${money(e.interest + (e.gst || 0))}` : ''}</small></span><span class="num">${money(remainingEmi(e, dayOf(nowLocal())))}</span></div>`)}` : ''}
+    <div class="row gap8 mt12">${payBtn}<a class="btn grow" href="#/import?src=pdf">Import statement</a></div>
+    ${!s.payFromId ? html`<div class="hint">Set “Bill paid from” in Edit to see this card’s dues against that bank account.</div>` : ''}
+  </div>`;
+}
+const progressBar = (pctUsed) => html`<div class="bar ${pctUsed > 80 ? 'over' : ''}"><i style="width:${Math.min(100, pctUsed || 0)}%"></i></div>`;
+
+function afterDuesLine(a) {
+  const d = afterCardDues(state, a.id);
+  if (!d || !d.owed) return '';
+  return html`<div class="card mt12"><div class="row between"><span><b>After card dues</b><small class="block muted">${d.cards.map((c) => `${c.card.name} ${money(c.owed)}`).join(' · ')}</small></span><span class="big2 num ${d.after < 0 ? 'debit' : ''}">${bal(d.after)}</span></div>
+    <div class="hint">Card spends (petrol etc.) are paid from here, so this is what’s really free to use.</div></div>`;
+}
+
 export function accountsListView() {
   const list = state.accounts;
   return {
@@ -102,6 +131,17 @@ export function accountFormView({ id } = {}) {
       <label class="field"><span>As on</span><input type="date" name="openingDay" value="${openDay}" max="${dayOf(nowLocal())}"></label>
     </div>
     <div class="hint">${isNew ? 'Entries after this date change the balance.' : 'Changing this recalculates the balance from that date.'} For a credit card, enter what you owe with a minus sign.</div>
+    <div data-credit ${f.purpose === 'credit' ? '' : 'hidden'}>
+      <div class="grid2">
+        <label class="field"><span>Credit limit</span><input name="limit" inputmode="decimal" value="${f.limit ? toRupees(f.limit) : ''}" placeholder="₹0"></label>
+        <label class="field"><span>Bill paid from</span><select name="payFromId">${accountOptions(f.payFromId || '', { allowNone: true, noneLabel: 'Choose…' })}</select></label>
+      </div>
+      <div class="grid2">
+        <label class="field"><span>Statement day</span><input name="statementDay" type="number" min="1" max="31" value="${f.statementDay || ''}" placeholder="e.g. 10"></label>
+        <label class="field"><span>Due day</span><input name="dueDay" type="number" min="1" max="31" value="${f.dueDay || ''}" placeholder="e.g. 28"></label>
+      </div>
+      <div class="hint">Card spends then show against the paying account as “after card dues”. Importing a statement fills these in.</div>
+    </div>
     <label class="field"><span>Last 4 digits (optional)</span><input name="last4" value="${f.last4 || ''}" inputmode="numeric" maxlength="4" pattern="\\d{4}" placeholder="••••" class="w120"></label>
     <div class="hint">Lets screenshots and SMS pick this account automatically.</div>
     <div class="list mt16">
@@ -114,6 +154,7 @@ export function accountFormView({ id } = {}) {
     </form>`,
     mount(el) {
       const form = el.querySelector('form');
+      form.querySelectorAll('input[name="purpose"]').forEach((r) => r.addEventListener('change', () => { el.querySelector('[data-credit]').hidden = r.value !== 'credit' || !r.checked; }));
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const d = formData(form);
@@ -131,6 +172,10 @@ export function accountFormView({ id } = {}) {
           openingBalance: (neg ? -1 : 1) * (ob || 0), openingAt, includeInTotal: d.includeInTotal,
           openingSetAt: !a || a.openingAt !== openingAt || a.openingBalance !== (neg ? -1 : 1) * (ob || 0) ? new Date().toISOString() : (a.openingSetAt || a.createdAt),
           order: a?.order ?? state.accounts.length,
+          ...(d.purpose === 'credit' ? {
+            limit: parseAmount(d.limit || '') || 0, payFromId: d.payFromId && d.payFromId !== a?.id ? d.payFromId : null,
+            statementDay: parseInt(d.statementDay, 10) || null, dueDay: parseInt(d.dueDay, 10) || null,
+          } : {}),
         });
         if (d.isDefault) await saveSettings({ defaultAccountId: rec.id });
         else if (state.settings.defaultAccountId === rec.id) await saveSettings({ defaultAccountId: null });

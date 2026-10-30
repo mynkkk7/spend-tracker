@@ -63,7 +63,7 @@ export function commitmentsView(_p, query) {
   };
 }
 
-function markPaidSheet(c, mk) {
+export function markPaidSheet(c, mk) {
   const date = mk === monthKey() ? nowLocal() : `${dueDate(mk, c.dueDay)}T10:00`;
   sheet(String(html`<h2 class="sheet-title">Mark ${c.name} paid</h2>
     <form data-pay>

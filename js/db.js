@@ -1,7 +1,7 @@
 // Thin IndexedDB wrapper. Everything lives on this device only.
 const DB_NAME = 'spend-tracker';
-const DB_VERSION = 1;
-export const STORES = ['accounts', 'kinds', 'categories', 'txns', 'commitments', 'planned', 'meta'];
+const DB_VERSION = 2; // v2 adds events
+export const STORES = ['accounts', 'kinds', 'categories', 'txns', 'commitments', 'planned', 'events', 'meta'];
 
 let dbPromise;
 function open() {

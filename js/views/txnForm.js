@@ -1,6 +1,7 @@
 import { html, money, parseAmount, nowLocal, toRupees, esc } from '../util.js';
 import { state, saveTxn, deleteTxn, saveCategory, category, kind, categoriesOf, outKinds, incomeKind, activeAccounts, account } from '../store.js';
 import { parsePaymentText, suggestCategory } from '../parse.js';
+import { eventForDate } from '../calc.js';
 import { readImage } from '../ocr.js';
 import { topbar, accountOptions, dot, toast, confirmSheet, icon, seg } from '../ui.js';
 
@@ -14,11 +15,14 @@ export function txnFormView({ id } = {}, query = {}) {
     ...existing, amountText: String(toRupees(existing.amount)), found: {}, manualEssential: true,
   } : {
     type: query.type === 'in' ? 'in' : query.type === 'transfer' ? 'transfer' : 'out',
-    amountText: query.amt || '', accountId: query.account || defaultAcc, toAccountId: '',
+    amountText: query.amt || '', accountId: query.account || defaultAcc, toAccountId: query.to || '',
     kindId: expenseKind?.id || null, categoryId: null, label: null, payee: '', vpa: '', note: query.note || '',
     upiRef: '', date: nowLocal(), essential: false, source: 'manual', found: {}, manualEssential: false,
   };
   if (f.type === 'in' && !existing) f.kindId = incomeKind()?.id || null;
+  if (!existing) { f.eventId = query.event || null; f.eventPicked = !!query.event; }
+  else f.eventPicked = true;
+  f.fxText = existing?.fxAmount ? String(existing.fxAmount) : '';
   const dupOf = !existing && query.dup ? state.txns.find((t) => t.id === query.dup) : null;
   if (dupOf) Object.assign(f, {
     type: dupOf.type, amountText: String(toRupees(dupOf.amount)), accountId: dupOf.accountId, toAccountId: dupOf.toAccountId || '',
@@ -27,6 +31,7 @@ export function txnFormView({ id } = {}, query = {}) {
   });
   const ui = { mode: existing ? 'manual' : (query.mode || (query.text ? 'paste' : 'manual')), pasteText: query.text || '', ocr: null, preview: null, busy: false, status: '' };
   if (!existing && f.note) applySuggestion(f, true);
+  autoEvent(f);
   if (!existing && query.text) applyParsed(f, parsePaymentText(state, query.text), ui, 'paste');
 
   return {
@@ -35,6 +40,13 @@ export function txnFormView({ id } = {}, query = {}) {
     mount(el) { mount(el, f, ui, existing); },
   };
 }
+
+/** New entries dated inside an event (e.g. the trip) are linked to it unless you choose otherwise. */
+function autoEvent(f) {
+  if (f.eventPicked || f.type !== 'out') return;
+  f.eventId = eventForDate(state, f.date)?.id || null;
+}
+const fxRate = (ev) => (ev?.currency && ev.perInr > 0 ? ev.perInr : null);
 
 function applySuggestion(f, onlyIfEmpty = false) {
   if (onlyIfEmpty && f.categoryId) return;
@@ -74,7 +86,8 @@ function render(f, ui, existing) {
 
   ${existing ? '' : html`<div class="seg mt8" role="group" aria-label="How to add">
     ${[['manual', 'Manual'], ['screenshot', 'Screenshot'], ['paste', 'Paste text']].map(([v, l]) => html`<button type="button" data-mode="${v}" aria-pressed="${ui.mode === v}">${l}</button>`)}
-  </div>`}
+  </div>
+  <a class="banner mt8" href="#/import"><span class="grow">Many at once? Import bank SMS or a card statement PDF</span><b>Import ›</b></a>`}
 
   ${ui.mode === 'screenshot' ? html`<div class="card mt12 shot">
       ${ui.preview ? html`<img class="shot-img" src="${ui.preview}" alt="Your screenshot">` : html`<div class="shot-ph">${icon.image}</div>`}
@@ -101,6 +114,15 @@ function render(f, ui, existing) {
   <label class="amount-wrap"><span class="sr">Amount</span>
     <span class="rupee">₹</span><input class="amount-input" name="amount" inputmode="decimal" placeholder="0" value="${f.amountText}" data-bind="amountText" required>${tag('amount')}
   </label>
+
+  ${!isTr && state.events.some((e) => !e.archived) ? (() => {
+    const evs = state.events.filter((e) => !e.archived || e.id === f.eventId);
+    const ev = state.events.find((e) => e.id === f.eventId);
+    return html`<div class="field"><span>Event <small class="muted">(trip, wedding… optional)</small></span><div class="chips">
+      <button type="button" class="chip" data-event="" aria-pressed="${!f.eventId}">None</button>
+      ${evs.map((e) => html`<button type="button" class="chip" data-event="${e.id}" aria-pressed="${f.eventId === e.id}">${e.name}</button>`)}</div></div>
+      ${fxRate(ev) ? html`<label class="field"><span>Amount in ${ev.currency} <small class="muted">(1 ₹ = ${ev.perInr} ${ev.currency})</small></span><input name="fx" inputmode="decimal" value="${f.fxText}" data-fx placeholder="e.g. 250000"></label>` : ''}`;
+  })() : ''}
 
   ${isOut ? html`<div class="field"><span>Kind</span>${seg('kind', kinds.map((k) => ({ value: k.id, label: k.name })), f.kindId)}</div>` : ''}
 
@@ -146,11 +168,23 @@ function mount(el, f, ui, existing) {
   form.querySelector('[data-suggest]')?.addEventListener('change', () => { if (!f.categoryId) { applySuggestion(f); rerender(); } });
   form.querySelector('[data-essential]')?.addEventListener('change', (e) => { f.essential = e.target.checked; f.manualEssential = true; });
 
+  form.querySelectorAll('[data-event]').forEach((b) => b.addEventListener('click', () => { f.eventId = b.dataset.event || null; f.eventPicked = true; rerender(); }));
+  form.querySelector('[data-fx]')?.addEventListener('input', (e) => {
+    f.fxText = e.target.value;
+    const ev = state.events.find((x) => x.id === f.eventId);
+    const v = parseFloat(String(e.target.value).replace(/[, ]/g, ''));
+    if (fxRate(ev) && v > 0) {
+      f.amountText = String(Math.round((v / ev.perInr) * 100) / 100);
+      const amt = form.querySelector('[name="amount"]'); if (amt) amt.value = f.amountText;
+    }
+  });
+  form.querySelector('[name="date"]')?.addEventListener('change', () => { const before = f.eventId; autoEvent(f); if (f.eventId !== before) rerender(); });
   form.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { ui.mode = b.dataset.mode; rerender(); }));
   form.querySelectorAll('[data-seg="type"]').forEach((b) => b.addEventListener('click', () => {
     const t = b.dataset.value; if (t === f.type) return;
     f.type = t; f.categoryId = null; f.label = null;
     f.kindId = t === 'in' ? incomeKind()?.id : t === 'out' ? (outKinds().find((k) => k.group === 'spending') || outKinds()[0])?.id : null;
+    autoEvent(f);
     rerender();
   }));
   form.querySelectorAll('[data-seg="kind"]').forEach((b) => b.addEventListener('click', () => {
@@ -247,7 +281,11 @@ function mount(el, f, ui, existing) {
       payee: (f.payee || '').trim(), vpa: f.vpa || '', note: (f.note || '').trim(), upiRef: (f.upiRef || '').trim(),
       essential: f.type === 'out' ? !!f.essential : false,
       date: f.date || nowLocal(), source: existing?.source || f.source,
+      eventId: f.type === 'transfer' ? null : (f.eventId || null),
     };
+    const ev = state.events.find((x) => x.id === rec.eventId);
+    const fxv = parseFloat(String(f.fxText || '').replace(/[, ]/g, ''));
+    if (fxRate(ev) && fxv > 0) { rec.fxAmount = fxv; rec.fxCurrency = ev.currency; } else { delete rec.fxAmount; delete rec.fxCurrency; }
     await saveTxn(rec);
     toast(existing ? 'Saved' : `Saved ${money(amount)}`);
     if (existing) history.length > 1 ? history.back() : (location.hash = '#/txns');

@@ -12,6 +12,9 @@ import { settingsView, planSettingsView, categoriesView, categoryFormView, kinds
 import { welcomeView, helpView } from './views/welcome.js';
 import { tagView } from './views/tag.js';
 import { installLock } from './lock.js';
+import { importView } from './views/import.js';
+import { eventsView, eventFormView, eventView } from './views/events.js';
+import { categoryView } from './views/category.js';
 
 const routes = [
   [/^\/$/, homeView],
@@ -35,6 +38,11 @@ const routes = [
   [/^\/settings\/kinds$/, kindsView],
   [/^\/help$/, helpView],
   [/^\/tag$/, tagView],
+  [/^\/import$/, importView],
+  [/^\/events$/, eventsView],
+  [/^\/events\/(?<id>[^/]+)$/, eventFormView],
+  [/^\/event\/(?<id>[^/]+)$/, eventView],
+  [/^\/category\/(?<id>[^/]+)$/, categoryView],
 ];
 
 const ONBOARDING_OK = [/^\/welcome$/, /^\/settings\/accounts\/[^/]+$/];
